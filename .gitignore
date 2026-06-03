@@ -1,0 +1,35 @@
+# ── Python / Backend ───────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+venv/
+env/
+.venv/
+.env
+
+# Testing / Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.log
+uvicorn_test*.log
+
+# ── Frontend / Node ─────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.npm/
+
+# ── OS / IDE ────────────────────────────
+.DS_Store
+.vscode/
+.idea/
+
+# ── Data / Caches ───────────────────────
+# Ignore any dynamically generated JSON, zip, or sqlite files in the root if any
+*.sqlite3
+*.db

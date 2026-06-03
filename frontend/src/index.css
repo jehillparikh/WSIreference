@@ -1,0 +1,87 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   index.css — WSI Viewer global design system
+   Dark-mode palette · Glassmorphism · Inter font · Micro-animations
+═══════════════════════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Design tokens ──────────────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --c-bg:           #080e1a;
+  --c-surface:      #0f1623;
+  --c-surface-2:    #17202f;
+  --c-border:       rgba(255,255,255,0.07);
+  --c-border-h:     rgba(255,255,255,0.13);
+
+  /* Brand */
+  --c-teal:         #14b8a6;
+  --c-teal-d:       rgba(20,184,166,0.15);
+  --c-teal-glow:    rgba(20,184,166,0.28);
+  --c-indigo:       #6366f1;
+  --c-indigo-d:     rgba(99,102,241,0.15);
+
+  /* Text */
+  --c-t1: #eef2f8;
+  --c-t2: #94a3b8;
+  --c-t3: #5a6a80;
+
+  /* Status */
+  --c-success: #22c55e;
+  --c-warn:    #f59e0b;
+  --c-danger:  #ef4444;
+  --c-info:    #3b82f6;
+
+  /* Tissue */
+  --c-tumour:  #f97316;
+  --c-stroma:  #3b82f6;
+  --c-necrosis:#a855f7;
+
+  /* Layout */
+  --topbar-h:  52px;
+  --sidebar-w: 260px;
+
+  /* Glass */
+  --glass: rgba(15,22,35,0.72);
+  --glass-blur: 18px;
+
+  /* Easing */
+  --ease: cubic-bezier(.22,1,.36,1);
+  --dur-f: 140ms;
+  --dur-m: 240ms;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  background: var(--c-bg);
+  color: var(--c-t1);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+input, select, textarea { font-family: inherit; font-size: inherit; }
+
+/* ── Utility ────────────────────────────────────────────────────────────── */
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--c-border);
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.18); }
+
+/* ── Keyframes ──────────────────────────────────────────────────────────── */
+@keyframes slideUp   { from { opacity:0; transform:translateY(18px) } to { opacity:1; transform:none } }
+@keyframes fadeIn    { from { opacity:0 } to { opacity:1 } }
+@keyframes slideInR  { from { opacity:0; transform:translateX(22px) } to { opacity:1; transform:none } }
+@keyframes slideDown { from { opacity:0; transform:translateY(-10px) } to { opacity:1; transform:none } }

@@ -1,0 +1,35 @@
+.shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+.topbar {
+  height: var(--topbar-h); display: flex; align-items: center;
+  padding: 0 1rem; gap: 1rem; flex-shrink: 0;
+  border-bottom: 1px solid var(--c-border); z-index: 100;
+}
+.topbarLeft  { display: flex; align-items: center; gap: .75rem; min-width: 280px; }
+.topbarRight { display: flex; align-items: center; gap: .5rem;  min-width: 160px; justify-content: flex-end; }
+
+.brand       { display: flex; align-items: center; gap: .5rem; }
+.brandName   { font-weight: 700; font-size: .95rem; color: var(--c-teal); }
+.sessionBadge{ font-size: .7rem; color: var(--c-t3); font-family: monospace;
+               max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tabs        { display: flex; gap: .2rem; flex: 1; justify-content: center; }
+.tab {
+  display: flex; align-items: center; gap: .4rem;
+  padding: .35rem .85rem; border-radius: 8px;
+  font-size: .82rem; font-weight: 500; color: var(--c-t2);
+  transition: all var(--dur-f);
+}
+.tab:hover   { background: rgba(255,255,255,.05); color: var(--c-t1); }
+.tabActive   { background: var(--c-teal-d); color: var(--c-teal); }
+
+.logoutBtn {
+  display: flex; align-items: center; gap: .4rem;
+  padding: .35rem .8rem; border-radius: 8px;
+  font-size: .8rem; font-weight: 500; color: var(--c-t2);
+  background: rgba(255,255,255,.04); border: 1px solid var(--c-border);
+  transition: all var(--dur-f);
+}
+.logoutBtn:hover { background: rgba(255,255,255,.08); color: var(--c-t1); }
+
+.content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }

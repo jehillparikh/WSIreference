@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=70.0", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "wsi-viewer"
+version = "1.0.0"
+description = "Whole-slide image viewer backend — tile streaming, TCA analysis, annotation CRUD, and pathology review worklist"
+readme = "README.md"
+license = { text = "Proprietary" }
+requires-python = ">=3.9"
+
+dependencies = [
+    # ── Web framework ────────────────────────────────────────────────────
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",    # includes websockets, httptools, uvloop
+    "starlette>=0.37.0",            # pulled in by fastapi; pinned for StaticFiles
+    "python-multipart>=0.0.9",      # required by FastAPI for form parsing
+
+    # ── HTTP client (async) ──────────────────────────────────────────────
+    "httpx>=0.27.0",                # used by GCSStreamService, TCAOverlayService, PathologyAPIClient
+
+    # ── Validation ───────────────────────────────────────────────────────
+    "pydantic>=2.7.0",              # request/response body schemas in routes
+
+    # ── Google Cloud ─────────────────────────────────────────────────────
+    "google-auth>=2.29.0",          # ADC credentials for GCS proxy & auth headers
+    "google-cloud-storage>=2.16.0", # signed URL generation (optional, lazy import)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",                # TestClient dependency
+    "anyio[trio]>=4.0.0",           # async test backend
+]
+
+[project.scripts]
+wsi-viewer = "main:app"
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["config*", "models*", "clients*", "services*", "routes*"]
+exclude = ["tests*", "frontend*"]
+
+# ── Pytest ───────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode        = "auto"
+testpaths           = ["tests"]
+python_files        = ["test_*.py"]
+python_classes      = ["Test*"]
+python_functions    = ["test_*"]
+log_cli             = true
+log_cli_level       = "WARNING"
+
+# ── Ruff (linter / formatter) ────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py39"
+line-length    = 100
+select         = ["E", "F", "W", "I", "UP", "N", "B", "SIM"]
+ignore         = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function call in default arg (FastAPI pattern)
+    "N802",   # function names with uppercase (FastAPI Depends conventions)
+]
+
+[tool.ruff.format]
+quote-style    = "double"
+indent-style   = "space"
+
+# ── MyPy (type checking) ─────────────────────────────────────────────────────
+[tool.mypy]
+python_version         = "3.9"
+strict                 = false
+ignore_missing_imports = true
+exclude                = ["tests/", "frontend/"]

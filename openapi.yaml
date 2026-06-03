@@ -1,0 +1,633 @@
+openapi: "3.1.0"
+
+info:
+  title: WSI Viewer Backend
+  version: "1.0.0"
+  description: |
+    Whole-slide image viewer — tile streaming, session management,
+    Tumour Content Analysis (TCA), per-slide annotations, and pathology review worklist.
+
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+
+tags:
+  - name: wsi
+    description: WSI session, tile proxy, and overlay asset routes
+  - name: annotations
+    description: Per-slide polygon / label / measure annotations
+  - name: tca
+    description: Tumour Content Analysis — parsed metadata and spatial heatmap
+  - name: worklist
+    description: Pathology review worklist CRUD
+
+# ─── Shared parameters ────────────────────────────────────────────────────────
+components:
+  parameters:
+    patient_id:
+      name: patient_id
+      in: query
+      required: true
+      schema: { type: string }
+      description: Patient UUID
+    event_id:
+      name: event_id
+      in: query
+      required: true
+      schema: { type: string }
+      description: Encounter / event ID
+    selected_slide_id:
+      name: selected_slide_id
+      in: query
+      required: true
+      schema: { type: string }
+      description: Slide block ID
+
+  schemas:
+    # ── WSI ───────────────────────────────────────────────────────────────
+    SlideMetadata:
+      type: object
+      properties:
+        width:           { type: integer }
+        height:          { type: integer }
+        mpp:             { type: number, nullable: true }
+        objective_power: { type: integer, nullable: true }
+        vendor:          { type: string, nullable: true }
+
+    Slide:
+      type: object
+      properties:
+        slide_id:  { type: string }
+        block_id:  { type: string }
+        filename:  { type: string, nullable: true }
+        status:    { type: string }
+        has_tca:   { type: boolean }
+        meta_data: { $ref: '#/components/schemas/SlideMetadata', nullable: true }
+
+    SlideList:
+      type: object
+      properties:
+        slides:        { type: array, items: { $ref: '#/components/schemas/Slide' } }
+        default_slide: { type: string, nullable: true }
+
+    OverlayConfig:
+      type: object
+      properties:
+        available:      { type: boolean }
+        density_image:  { type: string, nullable: true }
+        metadata:       { type: string, nullable: true }
+        grid:           { type: string, nullable: true }
+        slide_metadata: { $ref: '#/components/schemas/SlideMetadata', nullable: true }
+
+    # ── Point (shared) ────────────────────────────────────────────────────
+    Point:
+      type: object
+      required: [x, y]
+      properties:
+        x: { type: number, minimum: 0, maximum: 1 }
+        y: { type: number, minimum: 0, maximum: 1 }
+
+    # ── Annotations ───────────────────────────────────────────────────────
+    PolygonAnnotation:
+      type: object
+      properties:
+        id:         { type: string }
+        vertices:   { type: array, items: { $ref: '#/components/schemas/Point' } }
+        label:      { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    LabelAnnotation:
+      type: object
+      properties:
+        id:         { type: string }
+        anchor:     { $ref: '#/components/schemas/Point' }
+        offset:     { $ref: '#/components/schemas/Point' }
+        text:       { type: string }
+        created_at: { type: string, format: date-time }
+
+    MeasureAnnotation:
+      type: object
+      properties:
+        id:           { type: string }
+        start:        { $ref: '#/components/schemas/Point' }
+        end:          { $ref: '#/components/schemas/Point' }
+        distance_um:  { type: number, nullable: true }
+        distance_px:  { type: number, nullable: true }
+        created_at:   { type: string, format: date-time }
+
+    SlideAnnotations:
+      type: object
+      properties:
+        slide_key: { type: string }
+        polygons:  { type: array, items: { $ref: '#/components/schemas/PolygonAnnotation' } }
+        labels:    { type: array, items: { $ref: '#/components/schemas/LabelAnnotation' } }
+        measures:  { type: array, items: { $ref: '#/components/schemas/MeasureAnnotation' } }
+
+    # ── TCA ───────────────────────────────────────────────────────────────
+    TCAAggregates:
+      type: object
+      properties:
+        overall_tumour_pct:    { type: number, nullable: true }
+        overall_stroma_pct:    { type: number, nullable: true }
+        overall_necrosis_pct:  { type: number, nullable: true }
+        hotspot_tumour_pct:    { type: number, nullable: true }
+        hotspot_row:           { type: integer, nullable: true }
+        hotspot_col:           { type: integer, nullable: true }
+        total_cells_analysed:  { type: integer }
+        tissue_cells:          { type: integer }
+
+    TCADensityBand:
+      type: object
+      properties:
+        label:      { type: string }
+        min_pct:    { type: number }
+        max_pct:    { type: number }
+        cell_count: { type: integer }
+        area_um2:   { type: number, nullable: true }
+
+    TCAGridCell:
+      type: object
+      properties:
+        row:              { type: integer }
+        col:              { type: integer }
+        tumour_pct:       { type: number }
+        stroma_pct:       { type: number }
+        necrosis_pct:     { type: number, nullable: true }
+        inflammation_pct: { type: number, nullable: true }
+        other_pct:        { type: number, nullable: true }
+
+    TCAAnalysisResult:
+      type: object
+      properties:
+        slide_key:     { type: string }
+        available:     { type: boolean }
+        analysed_at:   { type: string, format: date-time, nullable: true }
+        aggregates:    { $ref: '#/components/schemas/TCAAggregates', nullable: true }
+        density_bands: { type: array, items: { $ref: '#/components/schemas/TCADensityBand' } }
+        grid_cells:    { type: array, items: { $ref: '#/components/schemas/TCAGridCell' } }
+
+    TCASummary:
+      type: object
+      properties:
+        slide_key:            { type: string }
+        available:            { type: boolean }
+        analysed_at:          { type: string, format: date-time, nullable: true }
+        overall_tumour_pct:   { type: number, nullable: true }
+        overall_stroma_pct:   { type: number, nullable: true }
+        overall_necrosis_pct: { type: number, nullable: true }
+        hotspot_tumour_pct:   { type: number, nullable: true }
+        total_cells_analysed: { type: integer }
+
+    TCAGridResponse:
+      type: object
+      properties:
+        slide_key:  { type: string }
+        available:  { type: boolean }
+        grid_cells: { type: array, items: { $ref: '#/components/schemas/TCAGridCell' } }
+        total:      { type: integer }
+
+    # ── Worklist ──────────────────────────────────────────────────────────
+    WorklistItem:
+      type: object
+      properties:
+        id:                 { type: string }
+        patient_id:         { type: string }
+        event_id:           { type: string }
+        selected_slide_id:  { type: string }
+        status:             { type: string, enum: [PENDING, IN_REVIEW, COMPLETE, FLAGGED, CANCELLED] }
+        priority:           { type: integer, minimum: 1, maximum: 5 }
+        assigned_to:        { type: string, nullable: true }
+        notes:              { type: string, nullable: true }
+        created_at:         { type: string, format: date-time }
+        updated_at:         { type: string, format: date-time }
+        viewer_params:
+          type: object
+          properties:
+            patient_id:        { type: string }
+            event_id:          { type: string }
+            selected_slide_id: { type: string }
+
+    Worklist:
+      type: object
+      properties:
+        items:  { type: array, items: { $ref: '#/components/schemas/WorklistItem' } }
+        total:  { type: integer }
+        limit:  { type: integer }
+        offset: { type: integer }
+
+    WorklistStats:
+      type: object
+      properties:
+        counts:
+          type: object
+          additionalProperties: { type: integer }
+
+# ─── Paths ───────────────────────────────────────────────────────────────────
+paths:
+
+  # ── WSI ──────────────────────────────────────────────────────────────────
+  /api/slides:
+    get:
+      tags: [wsi]
+      summary: Get slide list for a session
+      parameters:
+        - $ref: '#/components/parameters/patient_id'
+        - $ref: '#/components/parameters/event_id'
+        - $ref: '#/components/parameters/selected_slide_id'
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SlideList' } } } }
+        "502": { description: Pathology API unreachable }
+        "503": { description: API credentials not configured }
+
+  /api/thumbnail/{slide_name}:
+    get:
+      tags: [wsi]
+      summary: Proxy thumbnail image from GCS
+      parameters:
+        - name: slide_name
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/patient_id'
+        - $ref: '#/components/parameters/event_id'
+        - $ref: '#/components/parameters/selected_slide_id'
+      responses:
+        "200": { description: PNG/JPEG thumbnail bytes }
+        "404": { description: Slide or thumbnail not found }
+
+  /api/raw_slides/{filename}:
+    get:
+      tags: [wsi]
+      summary: Proxy Range request for tile streaming
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/patient_id'
+        - $ref: '#/components/parameters/event_id'
+        - $ref: '#/components/parameters/selected_slide_id'
+      responses:
+        "200": { description: Full slide bytes }
+        "206": { description: Partial content (Range response) }
+        "404": { description: Slide not found in session }
+    head:
+      tags: [wsi]
+      summary: HEAD — return Content-Length for tile planning
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/patient_id'
+        - $ref: '#/components/parameters/event_id'
+        - $ref: '#/components/parameters/selected_slide_id'
+      responses:
+        "200": { description: Headers only }
+
+  /api/slide-direct-url/{filename}:
+    get:
+      tags: [wsi]
+      summary: Return signed GCS URL for direct browser access
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/patient_id'
+        - $ref: '#/components/parameters/event_id'
+        - $ref: '#/components/parameters/selected_slide_id'
+      responses:
+        "200":
+          description: Signed URL or null if unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:       { type: string, nullable: true }
+                  available: { type: boolean }
+
+  /api/overlay-config/{slide_name}:
+    get:
+      tags: [wsi]
+      summary: TCA overlay config (triggers asset download if needed)
+      parameters:
+        - name: slide_name
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/patient_id'
+        - $ref: '#/components/parameters/event_id'
+        - $ref: '#/components/parameters/selected_slide_id'
+      responses:
+        "200": { description: Overlay config, content: { application/json: { schema: { $ref: '#/components/schemas/OverlayConfig' } } } }
+
+  /api/overlay-file/{filename}:
+    get:
+      tags: [wsi]
+      summary: Serve extracted TCA overlay asset (PNG or JSON)
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/patient_id'
+        - $ref: '#/components/parameters/event_id'
+        - $ref: '#/components/parameters/selected_slide_id'
+      responses:
+        "200": { description: File bytes }
+        "404": { description: File not in overlay cache }
+
+  # ── TCA ──────────────────────────────────────────────────────────────────
+  /api/tca/{slide_key}:
+    get:
+      tags: [tca]
+      summary: Full TCA analysis result
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+          description: Filename stem (e.g. 1087-25) or full filename
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TCAAnalysisResult' } } } }
+        "500": { description: Internal analysis error }
+
+  /api/tca/{slide_key}/summary:
+    get:
+      tags: [tca]
+      summary: Lightweight TCA aggregate summary
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TCASummary' } } } }
+
+  /api/tca/{slide_key}/grid:
+    get:
+      tags: [tca]
+      summary: Spatial grid cells for heatmap rendering
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TCAGridResponse' } } } }
+
+  /api/tca/{slide_key}/cache:
+    delete:
+      tags: [tca]
+      summary: Invalidate cached TCA analysis
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Cache cleared }
+
+  # ── Annotations ──────────────────────────────────────────────────────────
+  /api/annotations/{slide_key}:
+    get:
+      tags: [annotations]
+      summary: Get all annotations for a slide
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/SlideAnnotations' } } } }
+    delete:
+      tags: [annotations]
+      summary: Clear all annotations for a slide
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Cleared }
+
+  /api/annotations/{slide_key}/polygons:
+    post:
+      tags: [annotations]
+      summary: Add polygon annotation
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vertices]
+              properties:
+                vertices: { type: array, items: { $ref: '#/components/schemas/Point' }, minItems: 3 }
+                label:    { type: string, nullable: true }
+                id:       { type: string, nullable: true }
+      responses:
+        "201": { description: Created }
+
+  /api/annotations/{slide_key}/polygons/{annotation_id}:
+    patch:
+      tags: [annotations]
+      summary: Update polygon
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+        - name: annotation_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Updated }
+    delete:
+      tags: [annotations]
+      summary: Delete polygon
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+        - name: annotation_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+
+  /api/annotations/{slide_key}/labels:
+    post:
+      tags: [annotations]
+      summary: Add label annotation
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "201": { description: Created }
+
+  /api/annotations/{slide_key}/labels/{annotation_id}:
+    patch:
+      tags: [annotations]
+      summary: Update label
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+        - name: annotation_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Updated }
+    delete:
+      tags: [annotations]
+      summary: Delete label
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+        - name: annotation_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+
+  /api/annotations/{slide_key}/measures:
+    post:
+      tags: [annotations]
+      summary: Add measure annotation
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "201": { description: Created }
+
+  /api/annotations/{slide_key}/measures/{annotation_id}:
+    delete:
+      tags: [annotations]
+      summary: Delete measure
+      parameters:
+        - name: slide_key
+          in: path
+          required: true
+          schema: { type: string }
+        - name: annotation_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+
+  # ── Worklist ──────────────────────────────────────────────────────────────
+  /api/worklist:
+    get:
+      tags: [worklist]
+      summary: List worklist items (paginated, filterable)
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, IN_REVIEW, COMPLETE, FLAGGED, CANCELLED] }
+        - name: assigned_to
+          in: query
+          schema: { type: string }
+        - name: priority
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 5 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Worklist' } } } }
+    post:
+      tags: [worklist]
+      summary: Add case to worklist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [patient_id, event_id, selected_slide_id]
+              properties:
+                patient_id:        { type: string }
+                event_id:          { type: string }
+                selected_slide_id: { type: string }
+                priority:          { type: integer, minimum: 1, maximum: 5, default: 3 }
+                assigned_to:       { type: string, nullable: true }
+                notes:             { type: string, nullable: true }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/WorklistItem' } } } }
+
+  /api/worklist/stats:
+    get:
+      tags: [worklist]
+      summary: Worklist status count summary
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorklistStats' } } } }
+
+  /api/worklist/{item_id}:
+    get:
+      tags: [worklist]
+      summary: Get single worklist item
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorklistItem' } } } }
+        "404": { description: Not found }
+    patch:
+      tags: [worklist]
+      summary: Update worklist item
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:      { type: string, enum: [PENDING, IN_REVIEW, COMPLETE, FLAGGED, CANCELLED] }
+                priority:    { type: integer, minimum: 1, maximum: 5 }
+                assigned_to: { type: string, nullable: true }
+                notes:       { type: string, nullable: true }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/WorklistItem' } } } }
+        "404": { description: Not found }
+        "422": { description: Validation error }
+    delete:
+      tags: [worklist]
+      summary: Remove worklist item
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Not found }

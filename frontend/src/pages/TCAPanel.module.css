@@ -1,0 +1,56 @@
+.layout {
+  flex: 1; overflow-y: auto; padding: 1.5rem;
+  max-width: 860px; margin: 0 auto; width: 100%;
+  display: flex; flex-direction: column; gap: .85rem;
+}
+.header { display: flex; align-items: center; justify-content: space-between; }
+.title  { font-size: 1.1rem; font-weight: 700; }
+.refreshBtn {
+  display: flex; align-items: center; gap: .35rem;
+  padding: .35rem .8rem; border-radius: 8px;
+  font-size: .78rem; font-weight: 500; color: var(--c-t2);
+  background: rgba(255,255,255,.05); border: 1px solid var(--c-border);
+  transition: all var(--dur-f);
+}
+.refreshBtn:hover { background: rgba(255,255,255,.09); color: var(--c-t1); }
+
+.empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 1rem; color: var(--c-t2);
+  text-align: center; line-height: 1.6; padding: 2rem;
+}
+
+.statGrid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: .7rem;
+}
+.statCard {
+  border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: .4rem;
+  transition: transform var(--dur-f), box-shadow var(--dur-f);
+}
+.statCard:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+.statLabel { font-size: .7rem; font-weight: 600; text-transform: uppercase;
+             letter-spacing: .06em; color: var(--c-t3); }
+.statValue { font-size: 1.85rem; font-weight: 700; color: var(--c-t1); }
+.statSub   { font-size: .72rem; color: var(--c-t3); }
+.statBar   { height: 4px; background: rgba(255,255,255,.07); border-radius: 2px; overflow: hidden; }
+.statBarFill { height: 100%; border-radius: 2px; transition: width .6s var(--ease); }
+
+.section      { border-radius: 12px; padding: 1rem 1.2rem; }
+.sectionTitle { font-size: .8rem; font-weight: 600; text-transform: uppercase;
+                letter-spacing: .06em; color: var(--c-t2); margin-bottom: .85rem; }
+.sectionMeta  { font-weight: 400; text-transform: none; letter-spacing: 0;
+                font-size: .72rem; color: var(--c-t3); margin-left: .4rem; }
+
+.bands { display: flex; flex-direction: column; gap: .55rem; }
+.bandRow   { display: flex; align-items: center; gap: .7rem; }
+.bandLabel { font-size: .8rem; font-weight: 500; width: 60px; text-transform: capitalize; color: var(--c-t1); }
+.bandTrack { flex: 1; height: 8px; background: rgba(255,255,255,.05); border-radius: 4px; overflow: hidden; }
+.bandFill  { height: 100%; border-radius: 4px;
+             background: linear-gradient(90deg, var(--c-teal), var(--c-indigo));
+             transition: width .5s var(--ease); }
+.bandCount { font-size: .75rem; color: var(--c-t3); width: 75px; text-align: right; }
+
+.heatmap { width: 100%; height: auto; max-height: 320px; border-radius: 8px;
+           display: block; image-rendering: pixelated; }
+
+.ts { font-size: .72rem; color: var(--c-t3); text-align: right; }
