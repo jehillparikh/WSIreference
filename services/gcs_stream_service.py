@@ -25,6 +25,8 @@ from __future__ import annotations
 import logging
 import os
 import urllib.parse
+import urllib.request
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -89,6 +91,10 @@ class GCSStreamService:
         """
         assert self._http, "GCSStreamService not opened"
 
+        # ── Local file short-circuit (mock mode) ─────────────────────────────
+        if self._is_local_url(gcs_url):
+            return self._stream_local_file(gcs_url, range_header)
+
         req_headers: dict[str, str] = {"Accept-Ranges": "bytes"}
         if range_header:
             req_headers["Range"] = range_header
@@ -116,6 +122,11 @@ class GCSStreamService:
         Issue a HEAD request and return Content-Length.
         Used by GeoTIFFTileSource to learn the file size before issuing Ranges.
         """
+        # ── Local file short-circuit (mock mode) ─────────────────────────────
+        if self._is_local_url(gcs_url):
+            path = self._local_url_to_path(gcs_url)
+            return path.stat().st_size if path.exists() else None
+
         assert self._http
         auth_headers = await self._auth_headers(gcs_url)
         resp = await self._http.head(gcs_url, headers=auth_headers)
@@ -164,7 +175,100 @@ class GCSStreamService:
             logger.debug("Signed URL generation skipped: %s", exc)
             return None
 
-    # ── Internals ──────────────────────────────────────────────────────────
+    # ── Local-file helpers (mock mode) ─────────────────────────────────
+
+    @staticmethod
+    def _is_local_url(url: str) -> bool:
+        """Return True for local:// URLs produced by MockPathologyAPIClient."""
+        return url.startswith("local://")
+
+    @staticmethod
+    def _local_url_to_path(url: str) -> Path:
+        """
+        Convert a local:// URL back to a filesystem Path.
+
+        Uses urllib.request.url2pathname which correctly handles Windows
+        drive letters (e.g. /D:/... → D:\\...).
+        """
+        file_url = "file://" + url[len("local://"):]
+        parsed = urllib.parse.urlparse(file_url)
+        return Path(urllib.request.url2pathname(parsed.path))
+
+    def _stream_local_file(
+        self, url: str, range_header: Optional[str]
+    ) -> tuple[int, dict, bytes]:
+        """
+        Serve a local file (local:// URL) with HTTP Range request support.
+
+        Returns the same (status, headers, body) tuple as stream_range() so
+        the route layer needs zero changes.
+        """
+        path = self._local_url_to_path(url)
+
+        if not path.exists():
+            logger.warning("GCSStreamService: local file not found: %s", path)
+            return 404, {}, b""
+
+        file_size = path.stat().st_size
+        content_type = {
+            ".tiff": "image/tiff",
+            ".tif":  "image/tiff",
+            ".svs":  "image/tiff",   # SVS is a TIFF variant
+            ".ndpi": "application/octet-stream",
+            ".png":  "image/png",
+            ".jpg":  "image/jpeg",
+            ".jpeg": "image/jpeg",
+        }.get(path.suffix.lower(), "application/octet-stream")
+
+        base_headers: dict[str, str] = {
+            "Content-Type": content_type,
+            "Accept-Ranges": "bytes",
+            "Access-Control-Allow-Origin": "*",
+        }
+
+        # No Range header — return full file
+        if not range_header or not range_header.startswith("bytes="):
+            body = path.read_bytes()
+            return 200, {**base_headers, "Content-Length": str(len(body))}, body
+
+        # ── Parse Range header ──────────────────────────────────────────────────
+        try:
+            spec = range_header[6:]                    # strip "bytes="
+            raw_start, raw_end = spec.split("-", 1)
+
+            if not raw_start:                          # bytes=-N  (last N bytes)
+                n = int(raw_end)
+                start = max(0, file_size - n)
+                end = file_size - 1
+            elif not raw_end:                          # bytes=N-  (N to end)
+                start = int(raw_start)
+                end = file_size - 1
+            else:                                      # bytes=N-M
+                start = int(raw_start)
+                end = int(raw_end)
+
+            start = max(0, min(start, file_size - 1))
+            end = max(start, min(end, file_size - 1))
+            length = end - start + 1
+
+            with path.open("rb") as f:
+                f.seek(start)
+                body = f.read(length)
+
+            return 206, {
+                **base_headers,
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(length),
+            }, body
+
+        except (ValueError, IndexError) as exc:
+            logger.warning(
+                "GCSStreamService: malformed Range header %r: %s", range_header, exc
+            )
+            body = path.read_bytes()
+            return 200, {**base_headers, "Content-Length": str(len(body))}, body
+
+    # ── Internals ──────────────────────────────────────────────────────
 
     @staticmethod
     def _load_adc():

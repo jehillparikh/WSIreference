@@ -11,6 +11,9 @@ import { slideKey } from '../hooks/useSession'
 import { useToast } from '../components/Toast'
 import styles from './ViewerPanel.module.css'
 
+// Module-level flag: enableGeoTIFFTileSource must be called exactly once.
+let _geoTiffEnabled = false
+
 const TOOLS = [
   { id: 'pan',     label: 'Pan',     Icon: Hand },
   { id: 'polygon', label: 'Polygon', Icon: Pentagon   },
@@ -51,7 +54,7 @@ export default function ViewerPanel({ session, onSlideChange }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideData])
 
-  /* ── OSD init & cleanup ───────────────────────────────────────── */
+  /* ── OSD init & cleanup ───────────────────────────────────────────── */
   const openSlide = useCallback(async (slide) => {
     if (!viewerEl.current) return
     if (osdRef.current) { osdRef.current.destroy(); osdRef.current = null }
@@ -60,18 +63,45 @@ export default function ViewerPanel({ session, onSlideChange }) {
     onSlideChange?.(slide)
 
     const url = rawSlideUrl(slide.filename || slide.slide_id, session)
+    console.log('[WSI Viewer] Opening slide URL:', url)
 
+    // ── Load OSD + enable GeoTIFF tile source (once per module lifetime) ──
     const OSD = (await import('openseadragon')).default
+    if (!_geoTiffEnabled) {
+      const { enableGeoTIFFTileSource } = await import('geotiff-tilesource')
+      enableGeoTIFFTileSource(OSD)
+      _geoTiffEnabled = true
+    }
+
+    // ── Build tile source — try GeoTIFF first, fall back to plain image ──
+    let tileSources
+    try {
+      // getAllTileSources fetches the file via Range requests and returns
+      // one GeoTIFFTileSource per image in the file (primary + label + macro).
+      tileSources = await OSD.GeoTIFFTileSource.getAllTileSources(url, {
+        logLevel: 1,    // show geotiff.js warnings in the browser console
+        cache: false,   // always re-fetch when slide changes
+      })
+      console.log('[WSI Viewer] GeoTIFFTileSource ready, levels:', tileSources?.[0]?.GeoTIFFImages?.length)
+    } catch (err) {
+      console.error('[WSI Viewer] GeoTIFFTileSource FAILED — check the Network tab for Range request errors:', err)
+      // Browser cannot render TIFF natively; this fallback only works for JPEG/PNG thumbnails.
+      tileSources = { type: 'image', url }
+    }
+
     osdRef.current = OSD({
       element: viewerEl.current,
-      prefixUrl: 'https://cdn.jsdelivr.net/npm/openseadragon@4.1.0/build/openseadragon/images/',
-      tileSources: { type: 'image', url },
+      prefixUrl: 'https://cdn.jsdelivr.net/npm/openseadragon@6.0.2/build/openseadragon/images/',
+      tileSources,
       showNavigationControl: false,
       animationTime: 0.28,
       minZoomImageRatio: 0.4,
       maxZoomPixelRatio: 4,
     })
     osdRef.current.addHandler('zoom', ({ zoom: z }) => setZoom(z))
+    osdRef.current.addHandler('open-failed', (e) => {
+      console.error('[WSI Viewer] OSD open-failed:', e)
+    })
 
     // Load annotations
     const key = slideKey(slide)
@@ -82,6 +112,7 @@ export default function ViewerPanel({ session, onSlideChange }) {
       } catch (_) { setAnnotations({ polygons: [], labels: [], measures: [] }) }
     }
   }, [session, onSlideChange])
+
 
   useEffect(() => () => { osdRef.current?.destroy() }, [])
 

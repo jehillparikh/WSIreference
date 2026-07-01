@@ -1,0 +1,7 @@
+# Ignore generated slide files — they can be large and are regeneratable
+*.tiff
+*.tif
+*.svs
+*.ndpi
+*.scn
+*.czi

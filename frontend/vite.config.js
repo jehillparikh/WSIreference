@@ -11,7 +11,16 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
-        rewrite: (path) => path,
+        // Preserve all request headers so Range requests for tile streaming work.
+        // Without this, http-proxy may strip the Range header, breaking GeoTIFFTileSource.
+        headers: {},
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            // Forward Range header explicitly (required for byte-range tile fetches)
+            const range = req.headers['range']
+            if (range) proxyReq.setHeader('Range', range)
+          })
+        },
       },
     },
   },
@@ -22,9 +31,10 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor:       ['react', 'react-dom', 'react-router-dom'],
-          openseadragon:['openseadragon'],
-          query:        ['@tanstack/react-query'],
+          vendor:        ['react', 'react-dom', 'react-router-dom'],
+          openseadragon: ['openseadragon'],
+          geotiff:       ['geotiff-tilesource'],
+          query:         ['@tanstack/react-query'],
         },
       },
     },

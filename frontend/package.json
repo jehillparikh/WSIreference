@@ -10,19 +10,20 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.50.0",
+    "clsx": "^2.1.1",
+    "geotiff-tilesource": "^2.3.2",
+    "lucide-react": "^0.395.0",
+    "openseadragon": "^6.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.24.0",
-    "openseadragon": "^4.1.0",
-    "@tanstack/react-query": "^5.50.0",
-    "zustand": "^4.5.4",
-    "lucide-react": "^0.395.0",
-    "clsx": "^2.1.1"
+    "zustand": "^4.5.4"
   },
   "devDependencies": {
+    "@types/openseadragon": "^3.0.10",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@types/openseadragon": "^3.0.10",
     "@vitejs/plugin-react": "^4.3.1",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.3",
