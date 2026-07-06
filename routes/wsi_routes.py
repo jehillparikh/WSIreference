@@ -24,11 +24,13 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from config.settings import Settings, get_settings
 from models.domain import WSISession
 from services.gcs_stream_service import GCSStreamService
+from services.slide_normalization_service import SlideNormalizationService
 from services.slide_session_service import (
     SessionNotAvailableError,
     SlideSessionService,
 )
 from services.tca_overlay_service import TCAOverlayService, _slide_stem
+from services.thumbnail_service import ThumbnailService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -60,6 +62,14 @@ def _gcs_svc(request: Request) -> GCSStreamService:
 
 def _overlay_svc(request: Request) -> TCAOverlayService:
     return request.app.state.overlay_service
+
+
+def _thumbnail_svc(request: Request) -> ThumbnailService:
+    return request.app.state.thumbnail_service
+
+
+def _normalization_svc(request: Request) -> SlideNormalizationService:
+    return request.app.state.normalization_service
 
 
 def _settings(request: Request) -> Settings:
@@ -130,27 +140,30 @@ async def get_thumbnail(
     slide_name: str,
     params: WSIParams = Depends(),
     svc: SlideSessionService = Depends(_session_svc),
-    gcs: GCSStreamService = Depends(_gcs_svc),
+    thumbnails: ThumbnailService = Depends(_thumbnail_svc),
 ):
     """
-    Proxy thumbnail image from GCS.
-    thumbnail_url is a GCS HTTPS URL stored in the session.
+    Return a low-res overview PNG for a slide, generated directly from its
+    own pyramid (see ThumbnailService) — not proxied from whatever
+    thumbnail_url the pathology API happens to report. This works
+    uniformly for any slide reachable via slide_url: local mock files and
+    real GCS-hosted slides alike, both today and for future sources.
     """
     session = await _get_session(params, svc)
     slide = next(
         (s for s in session.slides if s.slide_id == slide_name or s.filename == slide_name),
         None,
     )
-    if not slide or not slide.thumbnail_url:
-        raise HTTPException(status_code=404, detail="Thumbnail not found")
+    if not slide:
+        raise HTTPException(status_code=404, detail="Slide not found")
 
-    status, headers, body = await gcs.stream_range(slide.thumbnail_url, range_header=None)
-    if status >= 400:
-        raise HTTPException(status_code=status, detail="GCS thumbnail fetch failed")
+    png = await thumbnails.get_thumbnail_png(slide.slide_url)
+    if png is None:
+        raise HTTPException(status_code=404, detail="Thumbnail not available for this slide")
 
     return Response(
-        content=body,
-        media_type=headers.get("Content-Type", "image/png"),
+        content=png,
+        media_type="image/png",
         headers={"Cache-Control": "public, max-age=3600"},
     )
 
@@ -163,17 +176,33 @@ async def raw_slide(
     params: WSIParams = Depends(),
     svc: SlideSessionService = Depends(_session_svc),
     gcs: GCSStreamService = Depends(_gcs_svc),
+    normalization: SlideNormalizationService = Depends(_normalization_svc),
 ):
     """
     Proxy Range requests to GCS for tile streaming.
 
     HEAD returns Content-Length so GeoTIFFTileSource can plan tile offsets.
     GET with Range header returns 206 Partial Content.
+
+    Hot path: a single zoom/pan step fires dozens of these concurrently, so
+    this resolves the slide_url via the FAST, lock-free, non-refreshing
+    SlideSessionService.get_session() lookup (the session was already built
+    by the /api/slides call that loaded the viewer). Falling back to the
+    full get_or_create_session() — which awaits a shared asyncio.Lock and a
+    staleness check — only on a cache miss avoids serializing every tile
+    request in the process behind that lock.
     """
-    session = await _get_session(params, svc)
-    slide_url = session.slide_url_by_filename(filename)
+    slide_url = _resolve_slide_url_fast(params, svc, filename)
+    if slide_url is None:
+        session = await _get_session(params, svc)
+        slide_url = session.slide_url_by_filename(filename)
     if not slide_url:
         raise HTTPException(status_code=404, detail=f"Slide '{filename}' not in session")
+
+    # Transparently swap in a normalized copy once one's ready (see
+    # SlideNormalizationService); otherwise this is a no-op that returns
+    # slide_url unchanged and, at most, kicks off background re-encoding.
+    slide_url = await normalization.resolve_serving_url(slide_url)
 
     if request.method == "HEAD":
         content_length = await gcs.head_content_length(slide_url)
@@ -192,11 +221,26 @@ async def raw_slide(
     if status >= 400:
         raise HTTPException(status_code=status, detail="GCS tile fetch failed")
 
+    # Tile bytes at a given byte range never change — let the browser's own
+    # HTTP cache serve re-visited tiles (panning back over an area) instead
+    # of re-issuing the Range request.
+    resp_headers = {**resp_headers, "Cache-Control": "public, max-age=86400, immutable"}
+
     return Response(
         content=body,
         status_code=status,
         headers=resp_headers,
     )
+
+
+def _resolve_slide_url_fast(
+    params: WSIParams,
+    svc: SlideSessionService,
+    filename: str,
+) -> Optional[str]:
+    """Lock-free session lookup for the tile-streaming hot path (see raw_slide)."""
+    session = svc.get_session(params.patient_id, params.event_id, params.selected_slide_id)
+    return session.slide_url_by_filename(filename) if session else None
 
 
 @router.get("/api/slide-direct-url/{filename:path}")

@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Hand, Pentagon, Tag, Ruler, Layers, Trash2 } from 'lucide-react'
-import { getSlides, rawSlideUrl, getAnnotations, clearAnnotations,
+import { getSlides, rawSlideUrl, thumbnailUrl, getAnnotations, clearAnnotations,
          addPolygon, addLabel, addMeasure } from '../api/client'
 import { slideKey } from '../hooks/useSession'
 import { useToast } from '../components/Toast'
@@ -27,11 +27,21 @@ export default function ViewerPanel({ session, onSlideChange }) {
   const viewerEl  = useRef(null)    // DOM container ref
   const annCanvasRef = useRef(null)
   const overlayRef   = useRef(null)
+  // Monotonic token: bumped on every openSlide() and on unmount so that a
+  // slow, in-flight open (awaiting dynamic imports + Range requests) knows it
+  // has been superseded and must not create a viewer. Prevents duplicate /
+  // leaked OSD instances under React StrictMode's double-invoked effects.
+  const openTokenRef = useRef(0)
 
   const [activeTool,   setActiveTool]   = useState('pan')
   const [activeSlide,  setActiveSlide]  = useState(null)
   const [overlayOn,    setOverlayOn]    = useState(false)
   const [zoom,         setZoom]         = useState(1)
+  // Instant low-res overview: shown immediately on slide select, faded out
+  // once OSD paints its first real tile (covers the GeoTIFF IFD-parsing
+  // handshake, which otherwise leaves the viewport blank for a beat).
+  const [overviewSrc,     setOverviewSrc]     = useState(null)
+  const [overviewVisible, setOverviewVisible] = useState(false)
   const [drawPoints,   setDrawPoints]   = useState([])
   const [isDrawing,    setIsDrawing]    = useState(false)
   const [annotations,  setAnnotations]  = useState({ polygons: [], labels: [], measures: [] })
@@ -57,10 +67,15 @@ export default function ViewerPanel({ session, onSlideChange }) {
   /* ── OSD init & cleanup ───────────────────────────────────────────── */
   const openSlide = useCallback(async (slide) => {
     if (!viewerEl.current) return
-    if (osdRef.current) { osdRef.current.destroy(); osdRef.current = null }
+    const myToken = ++openTokenRef.current   // this call now owns the viewport
 
     setActiveSlide(slide)
     onSlideChange?.(slide)
+
+    // Show the pre-generated thumbnail immediately — the whole slide, at a
+    // glance, before OSD/geotiff.js have even started parsing the TIFF.
+    setOverviewSrc(thumbnailUrl(slide.filename || slide.slide_id, session))
+    setOverviewVisible(true)
 
     const url = rawSlideUrl(slide.filename || slide.slide_id, session)
     console.log('[WSI Viewer] Opening slide URL:', url)
@@ -72,35 +87,65 @@ export default function ViewerPanel({ session, onSlideChange }) {
       enableGeoTIFFTileSource(OSD)
       _geoTiffEnabled = true
     }
+    if (myToken !== openTokenRef.current) return   // superseded while importing
 
     // ── Build tile source — try GeoTIFF first, fall back to plain image ──
-    let tileSources
+    let tileSource
     try {
-      // getAllTileSources fetches the file via Range requests and returns
-      // one GeoTIFFTileSource per image in the file (primary + label + macro).
-      tileSources = await OSD.GeoTIFFTileSource.getAllTileSources(url, {
+      // getAllTileSources fetches the file via Range requests and returns an
+      // ARRAY of GeoTIFFTileSource objects — one per image group in the file
+      // (the full-resolution pyramid first, then any associated label / macro
+      // / thumbnail images). We open ONLY the primary pyramid (index 0):
+      // passing the whole array to OSD (with sequenceMode off) would add every
+      // image as an overlapping TiledImage, stacking the tiny label/macro on
+      // top of the slide — which is exactly the "broken viewer" symptom.
+      const tileSources = await OSD.GeoTIFFTileSource.getAllTileSources(url, {
         logLevel: 1,    // show geotiff.js warnings in the browser console
         cache: false,   // always re-fetch when slide changes
       })
-      console.log('[WSI Viewer] GeoTIFFTileSource ready, levels:', tileSources?.[0]?.GeoTIFFImages?.length)
+      if (myToken !== openTokenRef.current) return   // superseded while fetching
+      if (!tileSources || !tileSources.length) {
+        throw new Error('No renderable images found in TIFF')
+      }
+      tileSource = tileSources[0]
+      console.log(
+        `[WSI Viewer] GeoTIFFTileSource ready — ${tileSources.length} image group(s); ` +
+        `opening primary with ${tileSource?.GeoTIFFImages?.length ?? '?'} pyramid level(s)`
+      )
     } catch (err) {
       console.error('[WSI Viewer] GeoTIFFTileSource FAILED — check the Network tab for Range request errors:', err)
       // Browser cannot render TIFF natively; this fallback only works for JPEG/PNG thumbnails.
-      tileSources = { type: 'image', url }
+      tileSource = { type: 'image', url }
     }
 
-    osdRef.current = OSD({
+    if (myToken !== openTokenRef.current) return
+    // Tear down any previous viewer only now that we're ready to replace it.
+    if (osdRef.current) { osdRef.current.destroy(); osdRef.current = null }
+
+    const viewer = OSD({
       element: viewerEl.current,
       prefixUrl: 'https://cdn.jsdelivr.net/npm/openseadragon@6.0.2/build/openseadragon/images/',
-      tileSources,
+      tileSources: tileSource,
       showNavigationControl: false,
       animationTime: 0.28,
       minZoomImageRatio: 0.4,
       maxZoomPixelRatio: 4,
     })
-    osdRef.current.addHandler('zoom', ({ zoom: z }) => setZoom(z))
-    osdRef.current.addHandler('open-failed', (e) => {
+    osdRef.current = viewer
+    viewer.addHandler('zoom', ({ zoom: z }) => setZoom(z))
+    viewer.addHandler('open-failed', (e) => {
       console.error('[WSI Viewer] OSD open-failed:', e)
+      toast.show('Failed to open slide — see console for details', 'error')
+    })
+    // First real tile loaded into memory — the low-res overview has done
+    // its job, fade it out. NOTE: we listen for 'tile-loaded', not
+    // 'tile-drawn' — OSD 6's default drawer is WebGL when available, and
+    // WebGLDrawer explicitly never raises 'tile-drawn' (only the legacy
+    // canvas/html drawers do), so that handler would silently never fire.
+    // 'tile-loaded' fires at the image-loading layer, independent of which
+    // drawer renders it.
+    viewer.addOnceHandler('tile-loaded', () => {
+      if (myToken === openTokenRef.current) setOverviewVisible(false)
     })
 
     // Load annotations
@@ -108,13 +153,19 @@ export default function ViewerPanel({ session, onSlideChange }) {
     if (key) {
       try {
         const ann = await getAnnotations(key)
-        setAnnotations(ann)
-      } catch (_) { setAnnotations({ polygons: [], labels: [], measures: [] }) }
+        if (myToken === openTokenRef.current) setAnnotations(ann)
+      } catch (_) {
+        if (myToken === openTokenRef.current) setAnnotations({ polygons: [], labels: [], measures: [] })
+      }
     }
-  }, [session, onSlideChange])
+  }, [session, onSlideChange, toast])
 
 
-  useEffect(() => () => { osdRef.current?.destroy() }, [])
+  useEffect(() => () => {
+    openTokenRef.current++          // invalidate any in-flight openSlide()
+    osdRef.current?.destroy()
+    osdRef.current = null
+  }, [])
 
   /* ── Tool switch ──────────────────────────────────────────────── */
   const switchTool = (tool) => {
@@ -179,6 +230,14 @@ export default function ViewerPanel({ session, onSlideChange }) {
       <div className={styles.viewerMain}>
         <div className={styles.viewportWrap}>
           <div ref={viewerEl} className={styles.viewport} id="osd-viewport" />
+          {overviewSrc && (
+            <img
+              className={`${styles.overview} ${overviewVisible ? '' : styles.overviewHidden}`}
+              src={overviewSrc}
+              alt=""
+              onError={() => setOverviewVisible(false)}
+            />
+          )}
           <canvas ref={annCanvasRef} className={styles.annCanvas} />
           <canvas ref={overlayRef}   className={styles.overlayCanvas} />
         </div>

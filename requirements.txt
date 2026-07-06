@@ -8,6 +8,17 @@ pydantic>=2.7.0
 google-auth>=2.29.0
 google-cloud-storage>=2.16.0
 
+# Thumbnail generation (services/thumbnail_service.py) — reads a slide's own
+# pyramid to produce a real overview PNG instead of trusting thumbnail_url.
+tifffile>=2024.1.0
+imagecodecs>=2024.1.0    # JPEG/LZW/etc. codecs tifffile needs to decode real scanner TIFFs
+Pillow>=10.0.0           # resize + PNG encode
+
+# Slide normalization (services/slide_normalization_service.py) — re-encodes
+# unsupported vendor formats into a clean, standard pyramidal TIFF.
+pyvips>=2.2.3
+pyvips-binary>=8.18.0    # bundles libvips itself; pyvips alone is just the Python binding
+
 # Dev / test (mirrors [project.optional-dependencies].dev)
 pytest>=8.2.0
 pytest-asyncio>=0.23.0

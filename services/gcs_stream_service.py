@@ -22,6 +22,7 @@ No session logic, no slide-list building — those live in SlideSessionService.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import urllib.parse
@@ -35,6 +36,41 @@ logger = logging.getLogger(__name__)
 
 # Bytes returned for a HEAD-only probe that just needs Content-Length
 _HEAD_CHUNK = 0
+
+
+# ── Module-level local:// URL helpers ────────────────────────────────────
+# Shared with ThumbnailService, which needs to open the exact same slide
+# files/URLs (local or remote) that the tile-streaming proxy serves.
+
+def is_local_url(url: str) -> bool:
+    """Return True for local:// URLs produced by MockPathologyAPIClient."""
+    return url.startswith("local://")
+
+
+def local_url_to_path(url: str) -> Path:
+    """
+    Convert a local:// URL back to a filesystem Path.
+
+    Uses urllib.request.url2pathname which correctly handles Windows
+    drive letters (e.g. /D:/... → D:\\...).
+    """
+    file_url = "file://" + url[len("local://"):]
+    parsed = urllib.parse.urlparse(file_url)
+    return Path(urllib.request.url2pathname(parsed.path))
+
+
+def path_to_local_url(path: Path) -> str:
+    """
+    Inverse of local_url_to_path — convert a filesystem Path to a local://
+    URL. Uses Path.as_uri() to correctly handle Windows drive letters and
+    spaces (matches the convention MockPathologyAPIClient already uses).
+
+    Always resolves to an absolute path first: a drive-less rooted path
+    like /tmp/foo (e.g. from a default like NORMALIZED_SLIDE_CACHE_DIR) is
+    NOT "absolute" in pathlib's Windows sense and makes as_uri() raise.
+    """
+    file_uri = path.resolve().as_uri()                # file:///D:/slides/x.tiff
+    return "local://" + file_uri[len("file://"):]      # local:///D:/slides/x.tiff
 
 
 class GCSStreamService:
@@ -92,8 +128,12 @@ class GCSStreamService:
         assert self._http, "GCSStreamService not opened"
 
         # ── Local file short-circuit (mock mode) ─────────────────────────────
+        # Runs in a worker thread: file I/O (open/seek/read) is blocking, and
+        # a blocking call here would freeze the whole asyncio event loop,
+        # silently serializing every other "concurrent" tile request behind
+        # it — which is exactly what made local-mode zoom feel tile-by-tile.
         if self._is_local_url(gcs_url):
-            return self._stream_local_file(gcs_url, range_header)
+            return await asyncio.to_thread(self._stream_local_file, gcs_url, range_header)
 
         req_headers: dict[str, str] = {"Accept-Ranges": "bytes"}
         if range_header:
@@ -125,7 +165,7 @@ class GCSStreamService:
         # ── Local file short-circuit (mock mode) ─────────────────────────────
         if self._is_local_url(gcs_url):
             path = self._local_url_to_path(gcs_url)
-            return path.stat().st_size if path.exists() else None
+            return await asyncio.to_thread(lambda: path.stat().st_size if path.exists() else None)
 
         assert self._http
         auth_headers = await self._auth_headers(gcs_url)
@@ -179,20 +219,11 @@ class GCSStreamService:
 
     @staticmethod
     def _is_local_url(url: str) -> bool:
-        """Return True for local:// URLs produced by MockPathologyAPIClient."""
-        return url.startswith("local://")
+        return is_local_url(url)
 
     @staticmethod
     def _local_url_to_path(url: str) -> Path:
-        """
-        Convert a local:// URL back to a filesystem Path.
-
-        Uses urllib.request.url2pathname which correctly handles Windows
-        drive letters (e.g. /D:/... → D:\\...).
-        """
-        file_url = "file://" + url[len("local://"):]
-        parsed = urllib.parse.urlparse(file_url)
-        return Path(urllib.request.url2pathname(parsed.path))
+        return local_url_to_path(url)
 
     def _stream_local_file(
         self, url: str, range_header: Optional[str]

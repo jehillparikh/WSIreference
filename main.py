@@ -20,6 +20,8 @@ Service inventory
   session_service      SlideSessionService   WSI session cache + refresh loop
   annotation_service   AnnotationService     Per-slide annotation CRUD
   worklist_service     WorklistService       Pathology case review queue
+  thumbnail_service    ThumbnailService      Generated overview PNG + disk cache
+  normalization_service SlideNormalizationService  Background re-encode of unsupported slide formats
 """
 from __future__ import annotations
 
@@ -38,9 +40,11 @@ from routes.worklist_routes import router as worklist_router
 from routes.wsi_routes import router
 from services.annotation_service import AnnotationService
 from services.gcs_stream_service import GCSStreamService
+from services.slide_normalization_service import SlideNormalizationService
 from services.slide_session_service import SlideSessionService
 from services.tca_analysis_service import TCAAnalysisService
 from services.tca_overlay_service import TCAOverlayService
+from services.thumbnail_service import ThumbnailService
 from services.worklist_service import WorklistService
 
 logging.basicConfig(
@@ -72,12 +76,20 @@ async def lifespan(app: FastAPI):
     annotation_service = AnnotationService()
     worklist_service = WorklistService()
 
+    thumbnail_service = ThumbnailService(settings=settings)
+    await thumbnail_service.open()
+
+    normalization_service = SlideNormalizationService(settings=settings)
+    await normalization_service.open()
+
     app.state.gcs_service = gcs_service
     app.state.overlay_service = overlay_service
     app.state.tca_analysis_service = tca_analysis_service
     app.state.session_service = session_service
     app.state.annotation_service = annotation_service
     app.state.worklist_service = worklist_service
+    app.state.thumbnail_service = thumbnail_service
+    app.state.normalization_service = normalization_service
 
     logger.info(
         "WSI Viewer ready  root_path=%r  port=%d  api_configured=%s",
@@ -92,6 +104,8 @@ async def lifespan(app: FastAPI):
     logger.info("WSI Viewer: shutting down")
     await session_service.stop()
     await overlay_service.close()
+    await thumbnail_service.close()
+    await normalization_service.close()
     await gcs_service.close()
 
 

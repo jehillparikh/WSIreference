@@ -109,6 +109,24 @@ class Settings:
             "OVERLAY_CACHE_DIR", "/tmp/wsi_overlays"
         )
 
+        # ── Thumbnail cache ──────────────────────────────────────────────────
+        # Generated overview PNGs (see ThumbnailService), keyed by a hash of
+        # the slide's raw URL. Works for any slide reachable via slide_url —
+        # local:// (mock mode) or gs:// / https:// (real GCS) — independent
+        # of whatever thumbnail_url the pathology API reports.
+        self.thumbnail_cache_dir: str = os.getenv(
+            "THUMBNAIL_CACHE_DIR", "/tmp/wsi_thumbnails"
+        )
+
+        # ── Normalized slide cache ───────────────────────────────────────────
+        # Clean, re-encoded pyramidal TIFFs (see SlideNormalizationService),
+        # produced in the background for slides whose original format isn't
+        # well-supported by the client-side tile viewer. The original file
+        # is never modified — this is purely a derived, disposable cache.
+        self.normalized_slide_cache_dir: str = os.getenv(
+            "NORMALIZED_SLIDE_CACHE_DIR", "/tmp/wsi_normalized_slides"
+        )
+
         # ── Mock / local mode ───────────────────────────────────────────────
         # Activated automatically when EXTERNAL_API_BASE_URL=mock.
         # All three settings are ignored when the real pathology API is used.
