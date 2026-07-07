@@ -1,10 +1,10 @@
 /**
  * src/pages/Shell.jsx
- * Main application shell: top bar + tab navigation → Viewer / TCA / Worklist panels.
+ * App shell: collapsible sidebar nav + topbar → Viewer / TCA / Worklist panels.
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Microscope, BarChart2, ClipboardList, LogOut } from 'lucide-react'
+import { Microscope, BarChart2, ClipboardList, LogOut, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useSession } from '../hooks/useSession'
 import ViewerPanel   from './ViewerPanel'
 import TCAPanel      from './TCAPanel'
@@ -12,10 +12,10 @@ import WorklistPanel from './WorklistPanel'
 import Toast         from '../components/Toast'
 import styles from './Shell.module.css'
 
-const TABS = [
-  { id: 'viewer',   label: 'Viewer',    Icon: Microscope   },
-  { id: 'tca',      label: 'TCA',       Icon: BarChart2    },
-  { id: 'worklist', label: 'Worklist',  Icon: ClipboardList },
+const NAV_ITEMS = [
+  { id: 'viewer',   label: 'Slide Viewer', title: 'Slide Viewer',            Icon: Microscope    },
+  { id: 'tca',      label: 'TCA',          title: 'Tumour Content Analysis', Icon: BarChart2     },
+  { id: 'worklist', label: 'Worklist',     title: 'Review Worklist',         Icon: ClipboardList },
 ]
 
 export default function Shell() {
@@ -23,65 +23,79 @@ export default function Shell() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('viewer')
   const [activeSlide, setActiveSlide] = useState(null)   // shared across panels
+  const [collapsed, setCollapsed] = useState(false)
 
   const handleLogout = () => {
     clearSession()
     navigate('/login')
   }
 
+  const active = NAV_ITEMS.find(n => n.id === activeTab)
+
   return (
     <div className={styles.shell}>
-      {/* ── Top bar ─────────────────────────────────────────────────── */}
-      <header className={`${styles.topbar} glass`}>
-        <div className={styles.topbarLeft}>
-          <div className={styles.brand}>
-            <svg width="28" height="28" viewBox="0 0 44 44" fill="none" aria-hidden>
-              <rect width="44" height="44" rx="12" fill="url(#lg2)"/>
-              <circle cx="22" cy="22" r="10" stroke="white" strokeWidth="2.5" opacity=".9"/>
-              <circle cx="22" cy="22" r="5"  fill="white" opacity=".9"/>
-              <defs>
-                <linearGradient id="lg2" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#14b8a6"/><stop offset="1" stopColor="#6366f1"/>
-                </linearGradient>
-              </defs>
-            </svg>
-            <span className={styles.brandName}>WSI Viewer</span>
-          </div>
-          {session && (
-            <span className={styles.sessionBadge}>
-              {session.patientId} · {session.eventId} · {session.selectedSlideId}
-            </span>
+      {/* ── Sidebar ─────────────────────────────────────────────────── */}
+      <aside className={`${styles.sidebar} ${collapsed ? styles.sidebarCollapsed : ''}`}>
+        <div className={styles.logoHeader}>
+          <svg width="26" height="26" viewBox="0 0 44 44" fill="none" aria-hidden style={{ flexShrink: 0 }}>
+            <rect width="44" height="44" rx="12" fill="var(--c-accent)" />
+            <circle cx="22" cy="22" r="10" stroke="white" strokeWidth="2.5" opacity=".9" />
+            <circle cx="22" cy="22" r="5"  fill="white" opacity=".9" />
+          </svg>
+          {!collapsed && (
+            <span className={styles.wordmark}>WSI<em>Viewer</em></span>
           )}
         </div>
+        <div className="glow-line" />
 
-        <nav className={styles.tabs} role="tablist">
-          {TABS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              role="tab"
-              aria-selected={activeTab === id}
-              className={`${styles.tab} ${activeTab === id ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab(id)}
-            >
-              <Icon size={15} strokeWidth={2} />
-              {label}
-            </button>
-          ))}
-        </nav>
-
-        <div className={styles.topbarRight}>
-          <button className={styles.logoutBtn} onClick={handleLogout} title="End session">
-            <LogOut size={15} strokeWidth={2} />
-            New Case
-          </button>
+        <div className={styles.navSection}>
+          {!collapsed && <span className={styles.navLabel}>Modules</span>}
+          <nav className={styles.nav}>
+            {NAV_ITEMS.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                className={`${styles.navBtn} ${activeTab === id ? styles.navBtnActive : ''}`}
+                onClick={() => setActiveTab(id)}
+                title={collapsed ? label : undefined}
+              >
+                <Icon size={16} strokeWidth={2} />
+                {!collapsed && <span>{label}</span>}
+              </button>
+            ))}
+          </nav>
         </div>
-      </header>
 
-      {/* ── Panels ──────────────────────────────────────────────────── */}
-      <div className={styles.content}>
-        {activeTab === 'viewer'   && <ViewerPanel   session={session} onSlideChange={setActiveSlide} />}
-        {activeTab === 'tca'      && <TCAPanel      session={session} activeSlide={activeSlide} />}
-        {activeTab === 'worklist' && <WorklistPanel session={session} />}
+        <button className={styles.collapseBtn} onClick={() => setCollapsed(c => !c)}
+                title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+          {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+        </button>
+      </aside>
+
+      {/* ── Main column ─────────────────────────────────────────────── */}
+      <div className={styles.main}>
+        <header className={`${styles.topbar} glass`}>
+          <div className={styles.topbarLeft}>
+            <h1 className={styles.pageTitle}>{active?.title}</h1>
+            <span className={styles.pageSubtitle}>Pathology Intelligence Platform</span>
+          </div>
+          <div className={styles.topbarRight}>
+            {session && (
+              <span className={styles.sessionBadge}>
+                {session.patientId} · {session.eventId} · {session.selectedSlideId}
+              </span>
+            )}
+            <button className={styles.logoutBtn} onClick={handleLogout} title="End session">
+              <LogOut size={15} strokeWidth={2} />
+              New Case
+            </button>
+          </div>
+        </header>
+
+        <div className={styles.content}>
+          {activeTab === 'viewer'   && <ViewerPanel   session={session} onSlideChange={setActiveSlide} />}
+          {activeTab === 'tca'      && <TCAPanel      session={session} activeSlide={activeSlide} />}
+          {activeTab === 'worklist' && <WorklistPanel session={session} />}
+        </div>
       </div>
 
       <Toast />

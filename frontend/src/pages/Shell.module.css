@@ -1,31 +1,73 @@
-.shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.shell { display: flex; height: 100vh; overflow: hidden; }
 
-.topbar {
-  height: var(--topbar-h); display: flex; align-items: center;
-  padding: 0 1rem; gap: 1rem; flex-shrink: 0;
-  border-bottom: 1px solid var(--c-border); z-index: 100;
+/* ── Sidebar ────────────────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w); flex-shrink: 0; display: flex; flex-direction: column;
+  background: var(--c-surface); border-right: 1px solid var(--c-border);
+  transition: width var(--dur-m) var(--ease-out);
+  overflow: hidden;
 }
-.topbarLeft  { display: flex; align-items: center; gap: .75rem; min-width: 280px; }
-.topbarRight { display: flex; align-items: center; gap: .5rem;  min-width: 160px; justify-content: flex-end; }
+.sidebarCollapsed { width: var(--sidebar-w-collapsed); }
 
-.brand       { display: flex; align-items: center; gap: .5rem; }
-.brandName   { font-weight: 700; font-size: .95rem; color: var(--c-teal); }
-.sessionBadge{ font-size: .7rem; color: var(--c-t3); font-family: monospace;
-               max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logoHeader {
+  height: var(--topbar-h); flex-shrink: 0;
+  display: flex; align-items: center; gap: .6rem;
+  padding: 0 1rem;
+}
+.wordmark {
+  font-family: var(--font-serif); font-size: 1.25rem; font-weight: 400; color: var(--c-t1);
+  white-space: nowrap;
+}
+.wordmark em { font-style: italic; color: var(--c-accent); }
 
-.tabs        { display: flex; gap: .2rem; flex: 1; justify-content: center; }
-.tab {
-  display: flex; align-items: center; gap: .4rem;
-  padding: .35rem .85rem; border-radius: 8px;
-  font-size: .82rem; font-weight: 500; color: var(--c-t2);
+.navSection { flex: 1; padding: 1rem .6rem; overflow-y: auto; }
+.navLabel {
+  display: block; padding: 0 .6rem .5rem;
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--c-t3);
+}
+.nav { display: flex; flex-direction: column; gap: .15rem; }
+.navBtn {
+  display: flex; align-items: center; gap: .65rem;
+  padding: .55rem .6rem; border-radius: var(--r-md);
+  font-size: .85rem; font-weight: 500; color: var(--c-t2);
+  transition: all var(--dur-f);
+  white-space: nowrap;
+}
+.navBtn:hover  { background: var(--c-t-hover-fill); color: var(--c-t1); }
+.navBtnActive  { background: var(--c-accent-d); color: var(--c-accent);
+                  box-shadow: inset 0 0 0 1px rgba(26,86,232,0.25); }
+.navBtnActive:hover { background: var(--c-accent-d); color: var(--c-accent); }
+
+.collapseBtn {
+  flex-shrink: 0; height: 36px; margin: .5rem;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-md); color: var(--c-t3);
   transition: all var(--dur-f);
 }
-.tab:hover   { background: rgba(255,255,255,.05); color: var(--c-t1); }
-.tabActive   { background: var(--c-teal-d); color: var(--c-teal); }
+.collapseBtn:hover { background: var(--c-t-hover-fill); color: var(--c-accent); }
+
+/* ── Main column ────────────────────────────────────────────────── */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+
+.topbar {
+  height: var(--topbar-h); flex-shrink: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--c-border);
+}
+.topbarLeft  { display: flex; align-items: baseline; gap: .6rem; min-width: 0; }
+.pageTitle   { font-family: var(--font-serif); font-size: 1.35rem; font-weight: 400; color: var(--c-t1);
+               white-space: nowrap; }
+.pageSubtitle{ font-size: .68rem; color: var(--c-t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.topbarRight { display: flex; align-items: center; gap: .75rem; flex-shrink: 0; }
+.sessionBadge{ font-size: .7rem; color: var(--c-t3); font-family: var(--font-mono);
+               max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .logoutBtn {
   display: flex; align-items: center; gap: .4rem;
-  padding: .35rem .8rem; border-radius: 8px;
+  padding: .35rem .8rem; border-radius: var(--r-md);
   font-size: .8rem; font-weight: 500; color: var(--c-t2);
   background: rgba(255,255,255,.04); border: 1px solid var(--c-border);
   transition: all var(--dur-f);

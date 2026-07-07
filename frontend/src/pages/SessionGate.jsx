@@ -36,18 +36,12 @@ export default function SessionGate() {
       <div className={`${styles.card} glass`} role="main">
         {/* Logo */}
         <div className={styles.logo}>
-          <svg width="44" height="44" viewBox="0 0 44 44" fill="none" aria-hidden>
-            <rect width="44" height="44" rx="12" fill="url(#lg)"/>
+          <svg width="40" height="40" viewBox="0 0 44 44" fill="none" aria-hidden>
+            <rect width="44" height="44" rx="12" fill="var(--c-accent)"/>
             <circle cx="22" cy="22" r="10" stroke="white" strokeWidth="2.5" opacity=".9"/>
             <circle cx="22" cy="22" r="5"  fill="white" opacity=".9"/>
-            <defs>
-              <linearGradient id="lg" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-                <stop stopColor="#14b8a6"/>
-                <stop offset="1" stopColor="#6366f1"/>
-              </linearGradient>
-            </defs>
           </svg>
-          <span className={styles.logoText}>WSI Viewer</span>
+          <span className={styles.logoText}>WSI<em>Viewer</em></span>
         </div>
 
         <h1 className={styles.title}>Open a Case</h1>

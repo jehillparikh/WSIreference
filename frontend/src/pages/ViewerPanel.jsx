@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Hand, Pentagon, Tag, Ruler, Layers, Trash2 } from 'lucide-react'
+import { Hand, Pentagon, Tag, Ruler, Layers, Trash2, ImageOff, Microscope, Search } from 'lucide-react'
 import { getSlides, rawSlideUrl, thumbnailUrl, getAnnotations, clearAnnotations,
          addPolygon, addLabel, addMeasure } from '../api/client'
 import { slideKey } from '../hooks/useSession'
@@ -45,6 +45,7 @@ export default function ViewerPanel({ session, onSlideChange }) {
   const [drawPoints,   setDrawPoints]   = useState([])
   const [isDrawing,    setIsDrawing]    = useState(false)
   const [annotations,  setAnnotations]  = useState({ polygons: [], labels: [], measures: [] })
+  const [search,       setSearch]       = useState('')
 
   /* ── Load slide list ──────────────────────────────────────────── */
   const { data: slideData, isLoading, error } = useQuery({
@@ -54,6 +55,9 @@ export default function ViewerPanel({ session, onSlideChange }) {
   })
 
   const slides = slideData?.slides ?? []
+  const visibleSlides = search.trim()
+    ? slides.filter(s => (s.filename || s.slide_id).toLowerCase().includes(search.trim().toLowerCase()))
+    : slides
 
   /* ── Open OSD on first load ───────────────────────────────────── */
   useEffect(() => {
@@ -189,21 +193,45 @@ export default function ViewerPanel({ session, onSlideChange }) {
   /* ── Status label for active tool ────────────────────────────── */
   const toolLabel = TOOLS.find(t => t.id === activeTool)?.label ?? ''
 
-  if (isLoading) return <div className={styles.center}>Loading slides…</div>
-  if (error)     return <div className={styles.center} style={{color:'var(--c-danger)'}}>
-    {error.message}
-  </div>
+  if (isLoading) return (
+    <div className={styles.emptyState}>
+      <div className={styles.emptyIcon}><Microscope size={28} strokeWidth={1.5} /></div>
+      <h3>Loading slides…</h3>
+    </div>
+  )
+  if (error) return (
+    <div className={styles.emptyState}>
+      <div className={`${styles.emptyIcon} ${styles.emptyIconDanger}`}><ImageOff size={28} strokeWidth={1.5} /></div>
+      <h3>Couldn't load slides</h3>
+      <p>{error.message}</p>
+    </div>
+  )
 
   return (
     <div className={styles.panel}>
       {/* Sidebar */}
-      <aside className={`${styles.sidebar} glass`}>
+      <aside className={`${styles.sidebar} card`}>
         <div className={styles.sidebarHeader}>
-          <span className={styles.sidebarTitle}>Slides</span>
-          <span className={styles.badge}>{slides.length}</span>
+          <span className="section-title">Slides</span>
+          <span className="badge badge-accent">{slides.length}</span>
         </div>
+
+        <div className={styles.sidebarSearch}>
+          <Search size={13} strokeWidth={2} />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Filter slides…"
+            aria-label="Filter slides"
+          />
+        </div>
+
         <ul className={styles.slideList} role="listbox">
-          {slides.map(s => {
+          {visibleSlides.length === 0 && (
+            <li className={styles.slideListEmpty}>No slides match "{search}".</li>
+          )}
+          {visibleSlides.map(s => {
             const name = s.filename || s.slide_id
             const m    = s.meta_data
             const dim  = m ? `${Math.round(m.width/1000)}k × ${Math.round(m.height/1000)}k` : ''
@@ -214,12 +242,21 @@ export default function ViewerPanel({ session, onSlideChange }) {
                   aria-selected={isAct}
                   className={`${styles.slideItem} ${isAct ? styles.slideItemActive : ''}`}
                   onClick={() => openSlide(s)}>
-                <span className={styles.slideName}>{name}</span>
-                <span className={styles.slideMeta}>
-                  {dim && <span>{dim}</span>}
-                  {s.has_tca && <span className={`${styles.pill} ${styles.pillTeal}`}>TCA</span>}
-                  <span className={styles.pill}>{s.status}</span>
-                </span>
+                <img
+                  className={styles.slideThumb}
+                  src={thumbnailUrl(s.filename || s.slide_id, session)}
+                  alt=""
+                  loading="lazy"
+                  onError={e => { e.currentTarget.style.visibility = 'hidden' }}
+                />
+                <div className={styles.slideInfo}>
+                  <span className={styles.slideName}>{name}</span>
+                  <span className={styles.slideMeta}>
+                    {dim && <span className={styles.dim}>{dim}</span>}
+                    {s.has_tca && <span className="badge badge-teal">TCA</span>}
+                    <span className="badge">{s.status}</span>
+                  </span>
+                </div>
               </li>
             )
           })}
@@ -240,47 +277,60 @@ export default function ViewerPanel({ session, onSlideChange }) {
           )}
           <canvas ref={annCanvasRef} className={styles.annCanvas} />
           <canvas ref={overlayRef}   className={styles.overlayCanvas} />
-        </div>
 
-        {/* Annotation toolbar */}
-        <div className={`${styles.toolbar} glass`} role="toolbar">
-          {TOOLS.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              className={`${styles.toolBtn} ${activeTool === id ? styles.toolBtnActive : ''}`}
-              title={label}
-              onClick={() => switchTool(id)}
-            >
-              <Icon size={16} strokeWidth={2} />
-            </button>
-          ))}
-          <span className={styles.tbDivider} />
-          <button
-            className={`${styles.toolBtn} ${overlayOn ? styles.toolBtnActive : ''}`}
-            title="Toggle TCA Overlay"
-            onClick={() => setOverlayOn(v => !v)}
-          >
-            <Layers size={16} strokeWidth={2} />
-          </button>
-          <span className={styles.tbDivider} />
-          <button className={`${styles.toolBtn} ${styles.toolBtnDanger}`} title="Clear annotations" onClick={handleClear}>
-            <Trash2 size={16} strokeWidth={2} />
-          </button>
-        </div>
+          {/* Floating annotation toolbar */}
+          <div className={`${styles.toolbar} glass`} role="toolbar">
+            <div className={styles.toolGroup}>
+              {TOOLS.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  className={`${styles.toolBtn} ${activeTool === id ? styles.toolBtnActive : ''}`}
+                  title={label}
+                  onClick={() => switchTool(id)}
+                >
+                  <Icon size={16} strokeWidth={2} />
+                </button>
+              ))}
+            </div>
+            <span className={styles.tbDivider} />
+            <div className={styles.toolGroup}>
+              <button
+                className={`${styles.toolBtn} ${overlayOn ? styles.toolBtnActive : ''}`}
+                title="Toggle TCA Overlay"
+                onClick={() => setOverlayOn(v => !v)}
+              >
+                <Layers size={16} strokeWidth={2} />
+              </button>
+            </div>
+            <span className={styles.tbDivider} />
+            <div className={styles.toolGroup}>
+              <button className={`${styles.toolBtn} ${styles.toolBtnDanger}`} title="Clear annotations" onClick={handleClear}>
+                <Trash2 size={16} strokeWidth={2} />
+              </button>
+            </div>
+          </div>
 
-        {/* Status bar */}
-        <div className={`${styles.statusBar} glass`}>
-          <span>Zoom: {zoom.toFixed(2)}×</span>
-          <span className={styles.sep}>|</span>
-          <span>{activeSlide?.filename || activeSlide?.slide_id || 'No slide'}</span>
-          <span className={styles.sep}>|</span>
-          <span>{toolLabel}</span>
-          <span className={styles.sep}>|</span>
-          <span>Polygons: {annotations.polygons.length}</span>
-          <span className={styles.sep}>·</span>
-          <span>Labels: {annotations.labels.length}</span>
-          <span className={styles.sep}>·</span>
-          <span>Measures: {annotations.measures.length}</span>
+          {/* Corner HUD */}
+          <div className={`${styles.hud} glass`}>
+            <div className={styles.hudRow}>
+              <span className={styles.hudLabel}>Slide</span>
+              <span className={styles.hudValue}>{activeSlide?.filename || activeSlide?.slide_id || '—'}</span>
+            </div>
+            <div className={styles.hudRow}>
+              <span className={styles.hudLabel}>Zoom</span>
+              <span className={styles.hudValue}>{zoom.toFixed(2)}×</span>
+            </div>
+            <div className={styles.hudRow}>
+              <span className={styles.hudLabel}>Tool</span>
+              <span className={styles.hudValue}>{toolLabel}{overlayOn ? ' · TCA on' : ''}</span>
+            </div>
+            <div className={styles.hudRow}>
+              <span className={styles.hudLabel}>Annotations</span>
+              <span className={styles.hudValue}>
+                {annotations.polygons.length}P · {annotations.labels.length}L · {annotations.measures.length}M
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
