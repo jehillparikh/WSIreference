@@ -1,53 +1,71 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   index.css — WSI Viewer global design system
-   Dark-mode palette · Glassmorphism · Inter font · Micro-animations
+   index.css — WSI Viewer design system
+   Ported from the sibling radiology viewer's design language (docs/
+   radiology_viewer_design.md) — single-accent dark palette, serif+sans
+   pairing, glass surfaces, corner-HUD viewer chrome.
 ═══════════════════════════════════════════════════════════════════════════ */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&display=swap');
 
 /* ── Design tokens ──────────────────────────────────────────────────────── */
 :root {
-  /* Surfaces */
-  --c-bg:           #080e1a;
-  --c-surface:      #0f1623;
-  --c-surface-2:    #17202f;
+  /* Surfaces (ported: --radio-bg/surface/card → --c-bg/surface/card) */
+  --c-bg:           #08090B;
+  --c-surface:      #0F1117;
+  --c-surface-2:    #14161E;
   --c-border:       rgba(255,255,255,0.07);
-  --c-border-h:     rgba(255,255,255,0.13);
+  --c-border-h:     rgba(26,86,232,0.4);
 
-  /* Brand */
-  --c-teal:         #14b8a6;
-  --c-teal-d:       rgba(20,184,166,0.15);
-  --c-teal-glow:    rgba(20,184,166,0.28);
-  --c-indigo:       #6366f1;
-  --c-indigo-d:     rgba(99,102,241,0.15);
+  /* Brand — single accent, replacing the old teal/indigo dual scheme */
+  --c-accent:       #1A56E8;
+  --c-accent-d:     rgba(26,86,232,0.10);
+  --c-accent-mid:   rgba(26,86,232,0.4);
+  --c-accent-hover: #2563EB;
 
-  /* Text */
-  --c-t1: #eef2f8;
-  --c-t2: #94a3b8;
-  --c-t3: #5a6a80;
+  /* Text (ink scale) */
+  --c-t1: rgba(255,255,255,0.92);
+  --c-t2: rgba(255,255,255,0.55);
+  --c-t3: rgba(255,255,255,0.28);
+  --c-t-hover-fill: rgba(255,255,255,0.06);
 
-  /* Status */
-  --c-success: #22c55e;
-  --c-warn:    #f59e0b;
-  --c-danger:  #ef4444;
-  --c-info:    #3b82f6;
+  /* Status — semantic only, never used for brand/nav */
+  --c-success: #22C55E; --c-success-d: rgba(34,197,94,0.10);
+  --c-warn:    #F59E0B; --c-warn-d:    rgba(245,158,11,0.10);
+  --c-danger:  #EF4444; --c-danger-d:  rgba(239,68,68,0.10);
+  --c-teal:    #00C6AF; --c-teal-d:    rgba(0,198,175,0.10);
 
-  /* Tissue */
+  /* Tissue (pathology-specific — no radiology equivalent, kept as-is) */
   --c-tumour:  #f97316;
   --c-stroma:  #3b82f6;
   --c-necrosis:#a855f7;
 
   /* Layout */
-  --topbar-h:  52px;
-  --sidebar-w: 260px;
+  --topbar-h:      60px;
+  --sidebar-w:     220px;
+  --sidebar-w-collapsed: 64px;
+  --slidelist-w:   260px;
 
   /* Glass */
-  --glass: rgba(15,22,35,0.72);
+  --glass: rgba(15,17,23,0.72);
   --glass-blur: 18px;
 
-  /* Easing */
-  --ease: cubic-bezier(.22,1,.36,1);
-  --dur-f: 140ms;
-  --dur-m: 240ms;
+  /* Typography */
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-sans:  'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono:  'Courier New', monospace;
+
+  /* Motion */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-f: 120ms; --dur-m: 220ms; --dur-slow: 450ms;
+
+  /* Radius */
+  --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
+  --shadow-md: 0 4px 20px rgba(0,0,0,0.6);
+  --shadow-lg: 0 12px 48px rgba(0,0,0,0.7);
+  --shadow-accent: 0 0 20px rgba(26,86,232,0.18);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -55,7 +73,7 @@
 html, body, #root {
   height: 100%;
   overflow: hidden;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   background: var(--c-bg);
   color: var(--c-t1);
@@ -74,6 +92,45 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   border: 1px solid var(--c-border);
 }
 
+/* Base panel unit — reused by viewer sidebar, TCA cards, Worklist table. */
+.card {
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  transition: border-color var(--dur-f) var(--ease-out);
+}
+.card:hover { border-color: var(--c-border-h); }
+
+/* Pill badge. Modifiers: .badge-accent/-success/-danger/-warn/-teal/-neutral */
+.badge {
+  display: inline-flex; align-items: center;
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 2px 8px; border-radius: 20px;
+  background: rgba(255,255,255,0.06); color: var(--c-t3);
+}
+.badge-accent  { background: var(--c-accent-d);  color: var(--c-accent); }
+.badge-success { background: var(--c-success-d); color: var(--c-success); }
+.badge-danger  { background: var(--c-danger-d);  color: var(--c-danger); }
+.badge-warn    { background: var(--c-warn-d);    color: var(--c-warn); }
+.badge-teal    { background: var(--c-teal-d);    color: var(--c-teal); }
+
+/* Stat block: big value + tiny uppercase label. */
+.stat-value { font-size: 20px; font-weight: 700; color: var(--c-t1); }
+.stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--c-t3); }
+
+/* Section micro-label (icon + uppercase tracked text) */
+.section-title {
+  display: flex; align-items: center; gap: .4rem;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--c-t2);
+}
+
+/* 1px gradient divider */
+.glow-line {
+  height: 1px; width: 100%;
+  background: linear-gradient(90deg, transparent, rgba(26,86,232,0.3), transparent);
+}
+
 /* ── Scrollbar ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -85,3 +142,4 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 @keyframes fadeIn    { from { opacity:0 } to { opacity:1 } }
 @keyframes slideInR  { from { opacity:0; transform:translateX(22px) } to { opacity:1; transform:none } }
 @keyframes slideDown { from { opacity:0; transform:translateY(-10px) } to { opacity:1; transform:none } }
+@keyframes pulse     { 0%, 100% { opacity: 1 } 50% { opacity: 0.4 } }

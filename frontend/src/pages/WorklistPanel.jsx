@@ -79,7 +79,7 @@ export default function WorklistPanel({ session }) {
     <div className={styles.layout}>
       {/* Header */}
       <div className={styles.header}>
-        <h2 className={styles.title}>Review Worklist</h2>
+        <span />
         <div className={styles.headerActions}>
           <button className={styles.btnAdd} onClick={() => setShowAdd(true)}>
             <Plus size={14} strokeWidth={2.5} /> Add Case
@@ -92,7 +92,7 @@ export default function WorklistPanel({ session }) {
 
       {/* Stats chips */}
       {statsData && (
-        <div className={`${styles.statsBar} glass`}>
+        <div className={`${styles.statsBar} card`}>
           {Object.entries(statsData.counts).map(([status, count]) => (
             <span key={status} className={styles.chip}>
               <span className={styles.chipDot} style={{ background: STATUS_COLOURS[status] || '#64748b' }} />
@@ -103,7 +103,7 @@ export default function WorklistPanel({ session }) {
       )}
 
       {/* Filters */}
-      <div className={`${styles.filters} glass`}>
+      <div className={`${styles.filters} card`}>
         <select value={filters.status} onChange={e => onFilterChange('status', e.target.value)}
                 aria-label="Filter by status">
           <option value="">All Statuses</option>
@@ -122,7 +122,7 @@ export default function WorklistPanel({ session }) {
       </div>
 
       {/* Table */}
-      <div className={`${styles.tableWrap} glass`}>
+      <div className={`${styles.tableWrap} card`}>
         {isLoading ? (
           <div className={styles.empty}>Loading…</div>
         ) : items.length === 0 ? (

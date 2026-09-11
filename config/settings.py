@@ -24,6 +24,38 @@ def _load_integrate_config() -> dict:
     return {}
 
 
+def _load_dotenv() -> None:
+    """
+    Minimal .env loader — no external dependencies required.
+
+    Reads KEY=VALUE pairs from the .env file in the project root and sets
+    them in os.environ, but ONLY if the key is not already present.
+    This means real environment variables (Cloud Run secrets, CI vars) always
+    win over the .env file, which is correct 12-factor behaviour.
+
+    Lines starting with '#' and blank lines are silently skipped.
+    Inline comments are NOT supported (matches standard .env semantics).
+    """
+    env_path = Path(__file__).parent.parent / ".env"
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+# Load .env at import time so os.getenv() calls in Settings.__init__ see the values.
+_load_dotenv()
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> "Settings":
     return Settings()
@@ -77,6 +109,36 @@ class Settings:
             "OVERLAY_CACHE_DIR", "/tmp/wsi_overlays"
         )
 
+        # ── Thumbnail cache ──────────────────────────────────────────────────
+        # Generated overview PNGs (see ThumbnailService), keyed by a hash of
+        # the slide's raw URL. Works for any slide reachable via slide_url —
+        # local:// (mock mode) or gs:// / https:// (real GCS) — independent
+        # of whatever thumbnail_url the pathology API reports.
+        self.thumbnail_cache_dir: str = os.getenv(
+            "THUMBNAIL_CACHE_DIR", "/tmp/wsi_thumbnails"
+        )
+
+        # ── Normalized slide cache ───────────────────────────────────────────
+        # Clean, re-encoded pyramidal TIFFs (see SlideNormalizationService),
+        # produced in the background for slides whose original format isn't
+        # well-supported by the client-side tile viewer. The original file
+        # is never modified — this is purely a derived, disposable cache.
+        self.normalized_slide_cache_dir: str = os.getenv(
+            "NORMALIZED_SLIDE_CACHE_DIR", "/tmp/wsi_normalized_slides"
+        )
+
+        # ── Mock / local mode ───────────────────────────────────────────────
+        # Activated automatically when EXTERNAL_API_BASE_URL=mock.
+        # All three settings are ignored when the real pathology API is used.
+        self.use_mock_api: bool = (
+            self.external_api_base_url.strip().lower() == "mock"
+        )
+        # Directory that contains local .tiff/.svs files for mock sessions.
+        self.mock_slide_dir: str = os.getenv("MOCK_SLIDE_DIR", "mock_slides")
+        # Base URL the mock client embeds in slide_url values (must match where
+        # the FastAPI server is reachable so the GCS proxy can resolve them).
+        self.mock_base_url: str = os.getenv("MOCK_BASE_URL", "http://localhost:8080")
+
         # ── Server ─────────────────────────────────────────────────────────
         self.root_path: str = os.getenv("ROOT_PATH", "")
         self.port: int = int(os.getenv("PORT", "8080"))
@@ -85,6 +147,9 @@ class Settings:
 
     @property
     def pathology_api_configured(self) -> bool:
+        # Mock mode is always "configured" — no real credentials needed.
+        if self.use_mock_api:
+            return True
         return bool(
             self.external_api_base_url
             and self.external_api_email

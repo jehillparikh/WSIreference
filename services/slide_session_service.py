@@ -172,7 +172,12 @@ class SlideSessionService:
 
     async def _get_client(self) -> PathologyAPIClient:
         if self._api_client is None:
-            self._api_client = PathologyAPIClient(self._settings)
+            if self._settings.use_mock_api:
+                # Lazy import keeps mock code out of the production import path.
+                from clients.mock_pathology_api import MockPathologyAPIClient
+                self._api_client = MockPathologyAPIClient(self._settings)  # type: ignore[assignment]
+            else:
+                self._api_client = PathologyAPIClient(self._settings)
             await self._api_client.open()
         return self._api_client
 

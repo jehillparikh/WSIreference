@@ -26,6 +26,15 @@ dependencies = [
     # ── Google Cloud ─────────────────────────────────────────────────────
     "google-auth>=2.29.0",          # ADC credentials for GCS proxy & auth headers
     "google-cloud-storage>=2.16.0", # signed URL generation (optional, lazy import)
+
+    # ── Thumbnail generation (services/thumbnail_service.py) ──────────────
+    "tifffile>=2024.1.0",           # reads a slide's own pyramid for the overview
+    "imagecodecs>=2024.1.0",        # JPEG/LZW/etc. codecs for real scanner TIFFs
+    "Pillow>=10.0.0",               # resize + PNG encode
+
+    # ── Slide normalization (services/slide_normalization_service.py) ─────
+    "pyvips>=2.2.3",                 # re-encodes unsupported vendor formats
+    "pyvips-binary>=8.18.0",         # bundles libvips itself
 ]
 
 [project.optional-dependencies]

@@ -54,7 +54,7 @@ export default function TCAPanel({ session, activeSlide }) {
   return (
     <div className={styles.layout}>
       <div className={styles.header}>
-        <h2 className={styles.title}>Tumour Content Analysis</h2>
+        <span />
         <button className={styles.refreshBtn} onClick={() => refresh()} title="Refresh TCA">
           <RefreshCw size={14} strokeWidth={2} /> Refresh
         </button>
@@ -79,16 +79,16 @@ export default function TCAPanel({ session, activeSlide }) {
 
           {/* Density bands */}
           {data.density_bands?.length > 0 && (
-            <section className={`${styles.section} glass`}>
-              <h3 className={styles.sectionTitle}>Density Bands</h3>
+            <section className={`${styles.section} card`}>
+              <h3 className={`${styles.sectionTitle} section-title`}>Density Bands</h3>
               <DensityBands bands={data.density_bands} />
             </section>
           )}
 
           {/* Spatial heatmap */}
           {gridData?.grid_cells?.length > 0 && (
-            <section className={`${styles.section} glass`}>
-              <h3 className={styles.sectionTitle}>
+            <section className={`${styles.section} card`}>
+              <h3 className={`${styles.sectionTitle} section-title`}>
                 Spatial Heatmap
                 <span className={styles.sectionMeta}>
                   ({gridData.total} cells)
@@ -113,9 +113,9 @@ export default function TCAPanel({ session, activeSlide }) {
 function StatCard({ label, value, colour, sub }) {
   const pct = value != null ? value : null
   return (
-    <div className={`${styles.statCard} glass`}>
-      <div className={styles.statLabel}>{label}</div>
-      <div className={styles.statValue}>{pct != null ? pct.toFixed(1) + '%' : '—'}</div>
+    <div className={`${styles.statCard} card`}>
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{pct != null ? pct.toFixed(1) + '%' : '—'}</div>
       {pct != null && (
         <div className={styles.statBar}>
           <div className={styles.statBarFill} style={{ width: Math.min(pct, 100) + '%', background: colour }} />
